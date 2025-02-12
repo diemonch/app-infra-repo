@@ -3,7 +3,7 @@ name: Deploy Infrastructure with Terraform & Kubernetes
 on:
   push:
     branches:
-      - main
+      - master  # Trigger when code is pushed to master
 
 jobs:
   deploy:
@@ -28,4 +28,5 @@ jobs:
       - name: Apply Terraform
         run: |
           cd terraform
-          bash deploy.sh
+          terraform init
+          terraform apply -auto-approve
