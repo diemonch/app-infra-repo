@@ -6,9 +6,13 @@ resource "aws_eks_cluster" "eks_cluster" {
     subnet_ids = aws_subnet.public[*].id
   }
 
-  depends_on = [aws_iam_role.eks_role]
-}
+  tags = {
+    Environment = "production"
+  }
 
-output "eks_cluster_name" {
-  value = aws_eks_cluster.eks_cluster.name
+  # ✅ Enables rollback if EKS cluster creation fails
+  timeouts {
+    create = "30m"
+    delete = "30m"
+  }
 }

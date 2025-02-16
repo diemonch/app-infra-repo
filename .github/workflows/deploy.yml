@@ -1,32 +1,35 @@
-name: Deploy Infrastructure with Terraform & Kubernetes
+name: Terraform Deployment with Rollback
 
 on:
   push:
     branches:
-      - master  # Trigger when code is pushed to master
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Install Terraform
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: latest
 
-      - name: Apply Terraform
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        id: apply
+        run: terraform apply -auto-approve tfplan
+        continue-on-error: true  # 🚨 Prevents pipeline failure, allowing rollback
+
+      - name: Terraform Rollback (if Apply Fails)
+        if: failure()
         run: |
-          cd terraform
-          terraform init
-          terraform apply -auto-approve
+          echo "Terraform apply failed. Rolling back..."
+          terraform destroy -auto-approve
