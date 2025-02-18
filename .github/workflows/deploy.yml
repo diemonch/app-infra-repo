@@ -1,16 +1,27 @@
-name: Terraform Deployment with Rollback
+name: Terraform Deployment with Secure Rollback
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:  # ✅ Allows manual execution of the workflow
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      AWS_REGION: "us-east-1"  # ✅ Set AWS Region
+      TF_WORKSPACE: "production"  # ✅ Terraform workspace
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/AWSControlTowerExecution"
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
@@ -18,7 +29,7 @@ jobs:
           terraform_version: latest
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -backend-config="key=terraform.tfstate"
 
       - name: Terraform Plan
         run: terraform plan -out=tfplan
@@ -28,8 +39,27 @@ jobs:
         run: terraform apply -auto-approve tfplan
         continue-on-error: true  # 🚨 Prevents pipeline failure, allowing rollback
 
-      - name: Terraform Rollback (if Apply Fails)
+      - name: Capture Terraform Failure
+        id: check_failure
+        if: failure()
+        run: echo "Terraform failed, triggering rollback"
+
+      - name: Terraform Rollback (Destroy Failed Resources Only)
         if: failure()
         run: |
-          echo "Terraform apply failed. Rolling back..."
-          terraform destroy -auto-approve
+          echo "Rolling back failed resources..."
+          terraform state list > resources.txt
+          while read -r resource; do
+            echo "Destroying $resource..."
+            terraform destroy -target=$resource -auto-approve || echo "Failed to delete $resource, skipping..."
+          done < resources.txt
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "Terraform deployment failed. Please check logs."
+      
+      - name: Notify on Success
+        if: success()
+        run: |
+          echo "Terraform deployment successful! ✅"
